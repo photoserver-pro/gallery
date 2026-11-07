@@ -1,0 +1,84 @@
+name: Aspect Checks
+# Scratch workflow on ci/aspect-checks only, never part of a PR: two jobs instead of the 19 of test.yml.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Ref to test (branch or commit)'
+        required: true
+        type: string
+      jobs:
+        description: 'Which job to run'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - medium
+          - mobile
+permissions: {}
+jobs:
+  mobile-unit-tests:
+    name: Unit Test Mobile
+    if: ${{ inputs.jobs != 'medium' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref }}
+          token: ${{ github.token }}
+
+      - name: Setup Mise
+        uses: immich-app/devtools/actions/use-mise@06a9ef925332c91be647d6256642b86b398592c8 # use-mise-action-v3.2.1
+        with:
+          github_token: ${{ github.token }}
+          working_directory: ./mobile
+
+      - name: Install dependencies
+        run: mise //mobile:install:ci
+
+      - name: Perform codegen
+        run: mise //mobile:codegen
+
+      - name: Run tests
+        run: mise //mobile:test
+
+  server-medium-tests:
+    name: Medium Tests (Server, two specs)
+    if: ${{ inputs.jobs != 'mobile' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ./server
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref }}
+          submodules: 'recursive'
+          token: ${{ github.token }}
+
+      - name: Setup Mise
+        uses: immich-app/devtools/actions/use-mise@06a9ef925332c91be647d6256642b86b398592c8 # use-mise-action-v3.2.1
+        with:
+          github_token: ${{ github.token }}
+
+      - name: Prepare
+        run: |
+          mise run //server:install
+          mise run //:plugins
+          mise run //packages/plugin-core:build
+
+      # The image comes from test/medium/globalSetup.ts, as in test.yml. The longer limit lets a slow S8.10b report its
+      # real duration instead of stopping at 5,000 ms.
+      - name: Run the two specs
+        run: >-
+          mise exec -- pnpm test:medium --run --testTimeout=60000 --reporter=verbose
+          test/medium/specs/repositories/face-person-verdict.repository.spec.ts
+          test/medium/specs/gallery/aspect-ratio-filter.medium.spec.ts
