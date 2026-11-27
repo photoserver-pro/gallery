@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resolvePickedTagIds } from '#lib/gallery/utils/tag-picker-resolve.ts';
   import { handleTagAssets } from '#lib/services/asset.service.ts';
   import { getAllTags, upsertTags, type TagResponseDto } from '@immich/sdk';
   import { FormModal } from '@immich/ui';
@@ -31,7 +32,8 @@
       return;
     }
 
-    if (await handleTagAssets(assetIds, [...selectedIds])) {
+    const tagIds = await resolvePickedTagIds([...selectedIds], tagMap);
+    if (tagIds && (await handleTagAssets(assetIds, tagIds))) {
       onClose(true);
     }
   };
